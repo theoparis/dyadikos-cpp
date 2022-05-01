@@ -1,0 +1,7 @@
+*.env*
+*.log*
+*.DS_Store*
+!*.example*
+build/
+.cache/
+

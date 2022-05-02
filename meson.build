@@ -7,8 +7,9 @@ endif
 inc = include_directories('src')
 
 src = [
-  'src/App.hpp',
-  'src/Transform.hpp',
+  'src/app.hpp',
+  'src/transform.hpp',
+  'src/camera.hpp',
 ]
 
 # dependencies

@@ -10,6 +10,7 @@ src = [
   'src/app.hpp',
   'src/transform.hpp',
   'src/camera.hpp',
+  'src/model.hpp',
 ]
 
 # dependencies
@@ -17,6 +18,7 @@ dep_glfw = dependency('glfw3')
 dep_spdlog = dependency('spdlog')
 dep_fmt = dependency('fmt')
 dep_vk = dependency('vulkan')
+dep_assimp = dependency('assimp')
 
 libdyadikos = static_library(
   'dyadikos',
@@ -26,6 +28,7 @@ libdyadikos = static_library(
     dep_spdlog,
     dep_fmt,
     dep_vk,
+    dep_assimp,
   ],
   install: true,
   include_directories: inc
@@ -38,6 +41,7 @@ libdyadikos_dep = declare_dependency(
     dep_spdlog,
     dep_fmt,
     dep_vk,
+    dep_assimp,
   ],
 )
 

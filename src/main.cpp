@@ -1,6 +1,6 @@
 #include "transform.hpp"
 #include "app.hpp"
-//#include "camera.hpp"
+#include "model.hpp"
 #include <GLFW/glfw3.h>
 #include <fstream>
 #include <memory>
@@ -27,33 +27,34 @@ auto main() -> int {
 	auto cameraTransform = Transform();
 	cameraTransform.position.z = -2.0f;
 
-	const std::vector<Vertex> vertices = {
-		{{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-		{{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-		{{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
+	std::vector<Vertex> vertices = {{{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+									{{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+									{{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
 
 	return app.run(
 		[&app, &vertices, &cameraTransform] {
 			glfwSetWindowUserPointer(app.get_window(), &cameraTransform);
+
+			vertices = model::loadModel("models/warehouse.gltf");
 
 			app.initialize(vertices);
 		},
 		[&app, &vertices, &cameraTransform] {
 			// Handle updates
 			if (glfwGetKey(app.get_window(), GLFW_KEY_W) == GLFW_PRESS) {
-				cameraTransform.position.z += 0.001;
+				cameraTransform.position.z += 0.01;
 			}
 
 			if (glfwGetKey(app.get_window(), GLFW_KEY_S) == GLFW_PRESS) {
-				cameraTransform.position.z -= 0.001;
+				cameraTransform.position.z -= 0.01;
 			}
 
 			if (glfwGetKey(app.get_window(), GLFW_KEY_A) == GLFW_PRESS) {
-				cameraTransform.position.x -= 0.001;
+				cameraTransform.position.x -= 0.1;
 			}
 
 			if (glfwGetKey(app.get_window(), GLFW_KEY_D) == GLFW_PRESS) {
-				cameraTransform.position.x += 0.001;
+				cameraTransform.position.x += 0.1;
 			}
 
 			// Handle rendering

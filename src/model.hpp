@@ -1,38 +1,56 @@
 #pragma once
-#include "App.hpp"
+#include "app.hpp"
 #include <spdlog/spdlog.h>
 #include <string>
 #include <vector>
-
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "tinygltf/tiny_gltf.h"
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 namespace dyadikos::model {
+	void processNode(aiNode *node, const aiScene *scene,
+					 std::vector<Vertex> &vertices) {
+		// process all the node's meshes (if any)
+		for (unsigned int i = 0; i < node->mNumMeshes; i++) {
+			aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+
+			for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
+				const aiFace &face = mesh->mFaces[i];
+
+				const unsigned int idx[3] = {face.mIndices[0], face.mIndices[1],
+											 face.mIndices[2]};
+
+				for (int j = 0; j != 3; j++) {
+					const aiVector3D v = mesh->mVertices[idx[j]];
+
+					Vertex vertex{};
+
+					vertex.color = glm::vec3(1.0f, 1.0f, 1.0f);
+					vertex.pos = glm::vec3(v.x, v.z, v.y);
+
+					vertices.push_back(vertex);
+				}
+			}
+		}
+		// then do the same for each of its children
+		for (unsigned int i = 0; i < node->mNumChildren; i++) {
+			processNode(node->mChildren[i], scene, vertices);
+		}
+	}
+
 	auto loadModel(const char *path) -> std::vector<Vertex> {
-		tinygltf::Model model;
-		tinygltf::TinyGLTF loader;
+		Assimp::Importer importer;
+		auto scene = importer.ReadFile(path, aiProcess_Triangulate);
 
-		std::string err = 0;
-		std::string warn = 0;
-
-		bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, path);
-
-		if (!warn.empty()) {
-			spdlog::warn("Warn: {}\n", warn.c_str());
+		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE ||
+			!scene->mRootNode) {
+			throw std::runtime_error(importer.GetErrorString());
 		}
 
-		if (!err.empty()) {
-			spdlog::error("Err: {}\n", err.c_str());
-		}
+		std::vector<Vertex> vertices;
 
-		if (!ret) {
-			spdlog::error("Failed to parse glTF\n");
-			return {};
-		}
+		processNode(scene->mRootNode, scene, vertices);
 
-		// TODO: process model
-		return {};
+		return vertices;
 	}
 } // namespace dyadikos::model

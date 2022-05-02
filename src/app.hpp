@@ -95,7 +95,7 @@ namespace dyadikos {
 					attributeDescriptions = {};
 				attributeDescriptions[0].binding = 0;
 				attributeDescriptions[0].location = 0;
-				attributeDescriptions[0].format = vk::Format::eR32G32Sfloat;
+				attributeDescriptions[0].format = vk::Format::eR32G32B32Sfloat;
 				attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
 				attributeDescriptions[1].binding = 0;
@@ -133,6 +133,12 @@ namespace dyadikos {
 			std::vector<vk::ImageView> swap_chain_image_views;
 			std::vector<vk::Framebuffer> swap_chain_framebuffers;
 
+			// Depth buffer
+			vk::Image depth_image;
+			vk::ImageView depth_image_view;
+			vk::DeviceMemory depth_image_memory;
+			vk::Format depth_format;
+
 			vk::RenderPass render_pass;
 			vk::PipelineLayout pipeline_layout;
 			vk::Pipeline graphics_pipeline;
@@ -155,6 +161,10 @@ namespace dyadikos {
 			glm::vec2 window_size;
 
 			void cleanup_swap_chain() {
+				device->destroyImageView(depth_image_view);
+				device->freeMemory(depth_image_memory);
+				device->destroyImage(depth_image);
+
 				for (auto framebuffer : swap_chain_framebuffers) {
 					device->destroyFramebuffer(framebuffer);
 				}
@@ -165,8 +175,8 @@ namespace dyadikos {
 				device->destroyPipelineLayout(pipeline_layout);
 				device->destroyRenderPass(render_pass);
 
-				for (auto imageView : swap_chain_image_views) {
-					device->destroyImageView(imageView);
+				for (auto image_view : swap_chain_image_views) {
+					device->destroyImageView(image_view);
 				}
 
 				device->destroySwapchainKHR(swap_chain);
@@ -358,7 +368,7 @@ namespace dyadikos {
 				SwapChainSupportDetails swapChainSupport =
 					querySwapChainSupport(physical_device);
 
-				vk::SurfaceFormatKHR surfaceFormat =
+				vk::SurfaceFormatKHR surface_format =
 					chooseSwapSurfaceFormat(swapChainSupport.formats);
 				vk::PresentModeKHR presentMode =
 					chooseSwapPresentMode(swapChainSupport.presentModes);
@@ -374,7 +384,7 @@ namespace dyadikos {
 
 				vk::SwapchainCreateInfoKHR createInfo(
 					vk::SwapchainCreateFlagsKHR(), surface, imageCount,
-					surfaceFormat.format, surfaceFormat.colorSpace, extent,
+					surface_format.format, surface_format.colorSpace, extent,
 					1, // imageArrayLayers
 					vk::ImageUsageFlagBits::eColorAttachment);
 
@@ -407,7 +417,7 @@ namespace dyadikos {
 
 				swap_chain_images = device->getSwapchainImagesKHR(swap_chain);
 
-				swap_chain_image_format = surfaceFormat.format;
+				swap_chain_image_format = surface_format.format;
 				swap_chain_extent = extent;
 			}
 
@@ -441,49 +451,86 @@ namespace dyadikos {
 			}
 
 			void create_render_pass() {
-				vk::AttachmentDescription colorAttachment = {};
-				colorAttachment.format = swap_chain_image_format;
-				colorAttachment.samples = vk::SampleCountFlagBits::e1;
-				colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-				colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
-				colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
-				colorAttachment.stencilStoreOp =
-					vk::AttachmentStoreOp::eDontCare;
-				colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
-				colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+				// Since all depth formats may be optional, we need to find a
+				// suitable depth format to use Start with the highest precision
+				// packed format
+				std::vector<vk::Format> depthFormats = {
+					vk::Format::eD32SfloatS8Uint, vk::Format::eD32Sfloat,
+					vk::Format::eD24UnormS8Uint, vk::Format::eD16UnormS8Uint,
+					vk::Format::eD16Unorm};
+				for (vk::Format &format : depthFormats) {
+					vk::FormatProperties depthFormatProperties =
+						physical_device.getFormatProperties(
+							format); // Format must support depth stencil
+									 // attachment for optimal tiling
+					if (depthFormatProperties.optimalTilingFeatures &
+						vk::FormatFeatureFlagBits::eDepthStencilAttachment) {
+						depth_format = format;
+						break;
+					}
+				}
 
-				vk::AttachmentReference colorAttachmentRef = {};
-				colorAttachmentRef.attachment = 0;
-				colorAttachmentRef.layout =
-					vk::ImageLayout::eColorAttachmentOptimal;
+				std::vector<vk::AttachmentDescription> attachmentDescriptions =
+					{vk::AttachmentDescription(vk::AttachmentDescriptionFlags(),
+											   swap_chain_image_format,
+											   vk::SampleCountFlagBits::e1,
+											   vk::AttachmentLoadOp::eClear,
+											   vk::AttachmentStoreOp::eStore,
+											   vk::AttachmentLoadOp::eDontCare,
+											   vk::AttachmentStoreOp::eDontCare,
+											   vk::ImageLayout::eUndefined,
+											   vk::ImageLayout::ePresentSrcKHR),
+					 vk::AttachmentDescription(
+						 vk::AttachmentDescriptionFlags(), depth_format,
+						 vk::SampleCountFlagBits::e1,
+						 vk::AttachmentLoadOp::eClear,
+						 vk::AttachmentStoreOp::eDontCare,
+						 vk::AttachmentLoadOp::eDontCare,
+						 vk::AttachmentStoreOp::eDontCare,
+						 vk::ImageLayout::eUndefined,
+						 vk::ImageLayout::eDepthStencilAttachmentOptimal)};
+				std::vector<vk::AttachmentReference> colorReferences = {
+					vk::AttachmentReference(
+						0, vk::ImageLayout::eColorAttachmentOptimal)};
+				std::vector<vk::AttachmentReference> depthReferences = {
+					vk::AttachmentReference(
+						1, vk::ImageLayout::eDepthStencilAttachmentOptimal)};
 
-				vk::SubpassDescription subpass = {};
-				subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-				subpass.colorAttachmentCount = 1;
-				subpass.pColorAttachments = &colorAttachmentRef;
-
-				vk::SubpassDependency dependency = {};
-				dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-				dependency.dstSubpass = 0;
-				dependency.srcStageMask =
-					vk::PipelineStageFlagBits::eColorAttachmentOutput;
-				// dependency.srcAccessMask = 0;
-				dependency.dstStageMask =
-					vk::PipelineStageFlagBits::eColorAttachmentOutput;
-				dependency.dstAccessMask =
-					vk::AccessFlagBits::eColorAttachmentRead |
-					vk::AccessFlagBits::eColorAttachmentWrite;
-
-				vk::RenderPassCreateInfo renderPassInfo = {};
-				renderPassInfo.attachmentCount = 1;
-				renderPassInfo.pAttachments = &colorAttachment;
-				renderPassInfo.subpassCount = 1;
-				renderPassInfo.pSubpasses = &subpass;
-				renderPassInfo.dependencyCount = 1;
-				renderPassInfo.pDependencies = &dependency;
+				std::vector<vk::SubpassDescription> subpasses = {
+					vk::SubpassDescription(
+						vk::SubpassDescriptionFlags(),
+						vk::PipelineBindPoint::eGraphics, 0, nullptr,
+						static_cast<uint32_t>(colorReferences.size()),
+						colorReferences.data(), nullptr, depthReferences.data(),
+						0, nullptr)};
+				std::vector<vk::SubpassDependency> dependencies = {
+					vk::SubpassDependency(
+						~0U, 0, vk::PipelineStageFlagBits::eBottomOfPipe,
+						vk::PipelineStageFlagBits::eColorAttachmentOutput,
+						vk::AccessFlagBits::eMemoryRead,
+						vk::AccessFlagBits::eColorAttachmentRead |
+							vk::AccessFlagBits::eColorAttachmentWrite,
+						vk::DependencyFlagBits::eByRegion),
+					vk::SubpassDependency(
+						0, ~0U,
+						vk::PipelineStageFlagBits::eColorAttachmentOutput,
+						vk::PipelineStageFlagBits::eBottomOfPipe,
+						vk::AccessFlagBits::eColorAttachmentRead |
+							vk::AccessFlagBits::eColorAttachmentWrite,
+						vk::AccessFlagBits::eMemoryRead,
+						vk::DependencyFlagBits::eByRegion)};
 
 				try {
-					render_pass = device->createRenderPass(renderPassInfo);
+					render_pass =
+						device->createRenderPass(vk::RenderPassCreateInfo(
+							vk::RenderPassCreateFlags(),
+							static_cast<uint32_t>(
+								attachmentDescriptions.size()),
+							attachmentDescriptions.data(),
+							static_cast<uint32_t>(subpasses.size()),
+							subpasses.data(),
+							static_cast<uint32_t>(dependencies.size()),
+							dependencies.data()));
 				} catch (vk::SystemError err) {
 					throw std::runtime_error("failed to create render pass!");
 				}
@@ -496,7 +543,7 @@ namespace dyadikos {
 				auto vertShaderModule = createShaderModule(vertShaderCode);
 				auto fragShaderModule = createShaderModule(fragShaderCode);
 
-				vk::PipelineShaderStageCreateInfo shaderStages[] = {
+				vk::PipelineShaderStageCreateInfo shader_stages[] = {
 					{vk::PipelineShaderStageCreateFlags(),
 					 vk::ShaderStageFlagBits::eVertex, *vertShaderModule,
 					 "main"},
@@ -591,23 +638,35 @@ namespace dyadikos {
 						"failed to create pipeline layout!");
 				}
 
-				vk::GraphicsPipelineCreateInfo pipelineInfo = {};
-				pipelineInfo.stageCount = 2;
-				pipelineInfo.pStages = shaderStages;
-				pipelineInfo.pVertexInputState = &vertexInputInfo;
-				pipelineInfo.pInputAssemblyState = &inputAssembly;
-				pipelineInfo.pViewportState = &viewportState;
-				pipelineInfo.pRasterizationState = &rasterizer;
-				pipelineInfo.pMultisampleState = &multisampling;
-				pipelineInfo.pColorBlendState = &colorBlending;
-				pipelineInfo.layout = pipeline_layout;
-				pipelineInfo.renderPass = render_pass;
-				pipelineInfo.subpass = 0;
-				pipelineInfo.basePipelineHandle = nullptr;
+				vk::PipelineDepthStencilStateCreateInfo depth_stencil{};
+				depth_stencil.setDepthTestEnable(VK_TRUE);
+				depth_stencil.setDepthWriteEnable(VK_TRUE);
+				depth_stencil.setDepthCompareOp(vk::CompareOp::eLess);
+				depth_stencil.setDepthBoundsTestEnable(VK_FALSE);
+				depth_stencil.setMinDepthBounds(0.0f);
+				depth_stencil.setMaxDepthBounds(1.0f);
+				depth_stencil.setStencilTestEnable(VK_FALSE);
+				depth_stencil.setFront(vk::StencilOpState{});
+				depth_stencil.setBack(vk::StencilOpState{});
+
+				vk::GraphicsPipelineCreateInfo pipeline_info = {};
+				pipeline_info.stageCount = 2;
+				pipeline_info.pStages = shader_stages;
+				pipeline_info.pVertexInputState = &vertexInputInfo;
+				pipeline_info.pInputAssemblyState = &inputAssembly;
+				pipeline_info.pViewportState = &viewportState;
+				pipeline_info.pRasterizationState = &rasterizer;
+				pipeline_info.pMultisampleState = &multisampling;
+				pipeline_info.pColorBlendState = &colorBlending;
+				pipeline_info.layout = pipeline_layout;
+				pipeline_info.renderPass = render_pass;
+				pipeline_info.subpass = 0;
+				pipeline_info.basePipelineHandle = nullptr;
+				pipeline_info.pDepthStencilState = &depth_stencil;
 
 				try {
 					graphics_pipeline =
-						device->createGraphicsPipeline(nullptr, pipelineInfo)
+						device->createGraphicsPipeline(nullptr, pipeline_info)
 							.value;
 				} catch (vk::SystemError err) {
 					throw std::runtime_error(
@@ -619,12 +678,14 @@ namespace dyadikos {
 				swap_chain_framebuffers.resize(swap_chain_image_views.size());
 
 				for (size_t i = 0; i < swap_chain_image_views.size(); i++) {
-					vk::ImageView attachments[] = {swap_chain_image_views[i]};
+					std::array<vk::ImageView, 2> attachments = {
+						swap_chain_image_views[i], depth_image_view};
 
 					vk::FramebufferCreateInfo framebufferInfo = {};
 					framebufferInfo.renderPass = render_pass;
-					framebufferInfo.attachmentCount = 1;
-					framebufferInfo.pAttachments = attachments;
+					framebufferInfo.attachmentCount =
+						static_cast<uint32_t>(attachments.size());
+					framebufferInfo.pAttachments = attachments.data();
 					framebufferInfo.width = swap_chain_extent.width;
 					framebufferInfo.height = swap_chain_extent.height;
 					framebufferInfo.layers = 1;
@@ -803,20 +864,31 @@ namespace dyadikos {
 						"failed to begin recording command buffer!");
 				}
 
-				vk::RenderPassBeginInfo renderPassInfo = {};
-				renderPassInfo.renderPass = render_pass;
-				renderPassInfo.framebuffer = swap_chain_framebuffers[i];
-				renderPassInfo.renderArea.offset.x = 0;
-				renderPassInfo.renderArea.offset.y = 0;
-				renderPassInfo.renderArea.extent = swap_chain_extent;
+				vk::RenderPassBeginInfo render_pass_info = {};
+				render_pass_info.renderPass = render_pass;
+				render_pass_info.framebuffer = swap_chain_framebuffers[i];
+				render_pass_info.renderArea.offset.x = 0;
+				render_pass_info.renderArea.offset.y = 0;
+				render_pass_info.renderArea.extent = swap_chain_extent;
 
-				vk::ClearValue clearColor = {
-					std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}};
-				renderPassInfo.clearValueCount = 1;
-				renderPassInfo.pClearValues = &clearColor;
+				std::array<vk::ClearValue, 2> clear_values{};
+
+				vk::ClearColorValue clear_color_value{};
+				clear_color_value.setFloat32({0.0f, 0.0f, 0.0f, 1.0f});
+
+				vk::ClearDepthStencilValue clear_depth_stencil_value{};
+				clear_depth_stencil_value.setDepth(1.0f);
+				clear_depth_stencil_value.setStencil(0);
+
+				clear_values[0].setColor(clear_color_value);
+				clear_values[1].setDepthStencil(clear_depth_stencil_value);
+
+				render_pass_info.clearValueCount =
+					static_cast<uint32_t>(clear_values.size());
+				render_pass_info.pClearValues = clear_values.data();
 
 				command_buffers[i].beginRenderPass(
-					renderPassInfo, vk::SubpassContents::eInline);
+					render_pass_info, vk::SubpassContents::eInline);
 
 				command_buffers[i].bindPipeline(
 					vk::PipelineBindPoint::eGraphics, graphics_pipeline);
@@ -1085,12 +1157,66 @@ namespace dyadikos {
 				create_image_views();
 				create_render_pass();
 				create_graphics_pipeline();
-				create_frame_buffers();
 				create_command_pool();
+				create_depth_resources();
+				create_frame_buffers();
 				create_vertex_buffer(vertices);
 				create_command_buffers();
 				record_command_buffers(vertices);
 				create_sync_objects();
+			}
+
+			void create_depth_resources() {
+				vk::FormatProperties format_properties =
+					physical_device.getFormatProperties(depth_format);
+
+				vk::ImageTiling tiling;
+				if (format_properties.linearTilingFeatures &
+					vk::FormatFeatureFlagBits::eDepthStencilAttachment) {
+					tiling = vk::ImageTiling::eLinear;
+				} else if (format_properties.optimalTilingFeatures &
+						   vk::FormatFeatureFlagBits::eDepthStencilAttachment) {
+					tiling = vk::ImageTiling::eOptimal;
+				} else {
+					throw std::runtime_error(
+						"DepthStencilAttachment is not supported for D16Unorm "
+						"depth format.");
+				}
+				vk::ImageCreateInfo image_create_info(
+					vk::ImageCreateFlags(), vk::ImageType::e2D, depth_format,
+					vk::Extent3D(swap_chain_extent, 1), 1, 1,
+					vk::SampleCountFlagBits::e1, tiling,
+					vk::ImageUsageFlagBits::eDepthStencilAttachment);
+				depth_image = device->createImage(image_create_info);
+
+				vk::PhysicalDeviceMemoryProperties memoryProperties =
+					physical_device.getMemoryProperties();
+				vk::MemoryRequirements memoryRequirements =
+					device->getImageMemoryRequirements(depth_image);
+				uint32_t typeBits = memoryRequirements.memoryTypeBits;
+				auto typeIndex = uint32_t(~0);
+				for (uint32_t i = 0; i < memoryProperties.memoryTypeCount;
+					 i++) {
+					if ((typeBits & 1) &&
+						((memoryProperties.memoryTypes[i].propertyFlags &
+						  vk::MemoryPropertyFlagBits::eDeviceLocal) ==
+						 vk::MemoryPropertyFlagBits::eDeviceLocal)) {
+						typeIndex = i;
+						break;
+					}
+					typeBits >>= 1;
+				}
+				assert(typeIndex != uint32_t(~0));
+				depth_image_memory = device->allocateMemory(
+					vk::MemoryAllocateInfo(memoryRequirements.size, typeIndex));
+
+				device->bindImageMemory(depth_image, depth_image_memory, 0);
+
+				depth_image_view =
+					device->createImageView(vk::ImageViewCreateInfo(
+						vk::ImageViewCreateFlags(), depth_image,
+						vk::ImageViewType::e2D, depth_format, {},
+						{vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}));
 			}
 
 			void draw_frame(const std::vector<Vertex> &vertices) {

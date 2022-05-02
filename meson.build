@@ -4,24 +4,27 @@ if get_option('buildtype').startswith('debug')
   add_project_arguments('-DDEBUG', language : 'cpp')
 endif
 
-inc = include_directories('include')
+inc = include_directories('src')
 
 src = [
-  'include/app.hpp',
-  'include/shader.hpp',
-  'include/mesh.hpp',
-  'include/transform.hpp',
-  'include/primitive.hpp',
-  'src/glad.cpp'
+  'src/App.hpp',
+  'src/Transform.hpp',
 ]
+
+# dependencies
+dep_glfw = dependency('glfw3')
+dep_spdlog = dependency('spdlog')
+dep_fmt = dependency('fmt')
+dep_vk = dependency('vulkan')
 
 libdyadikos = static_library(
   'dyadikos',
   sources: src,
   dependencies: [
-    dependency('glfw3'),
-    dependency('spdlog'),
-    dependency('fmt'),
+    dep_glfw,
+    dep_spdlog,
+    dep_fmt,
+    dep_vk,
   ],
   install: true,
   include_directories: inc
@@ -30,9 +33,10 @@ libdyadikos_dep = declare_dependency(
   include_directories: inc,
   link_with: libdyadikos,
   dependencies: [
-    dependency('glfw3'),
-    dependency('spdlog'),
-    dependency('fmt'),
+    dep_glfw,
+    dep_spdlog,
+    dep_fmt,
+    dep_vk,
   ],
 )
 

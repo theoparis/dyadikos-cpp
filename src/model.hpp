@@ -17,16 +17,13 @@ namespace dyadikos::model {
 			for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
 				const aiFace &face = mesh->mFaces[i];
 
-				const unsigned int idx[3] = {face.mIndices[0], face.mIndices[1],
-											 face.mIndices[2]};
+				for (int j = 0; j < face.mNumIndices; j++) {
+					const aiVector3D v = mesh->mVertices[face.mIndices[j]];
 
-				for (int j = 0; j != 3; j++) {
-					const aiVector3D v = mesh->mVertices[idx[j]];
-
-					Vertex vertex{};
-
-					vertex.color = glm::vec3(1.0f, 1.0f, 1.0f);
-					vertex.pos = glm::vec3(v.x, v.z, v.y);
+					Vertex vertex{
+						glm::vec3(v.x, v.z, v.y),
+						glm::vec3(1.0f, 1.0f, 1.0f),
+					};
 
 					vertices.push_back(vertex);
 				}

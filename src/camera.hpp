@@ -6,5 +6,5 @@
 
 namespace dyadikos {
 	// corresponding Euler Angles, Vectors and Matrices for use in OpenGL
-	class FirstPersonCamera {}
+	class FirstPersonCamera {};
 } // namespace dyadikos

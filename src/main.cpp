@@ -35,7 +35,7 @@ auto main() -> int {
 		[&app, &vertices, &cameraTransform] {
 			glfwSetWindowUserPointer(app.get_window(), &cameraTransform);
 
-			vertices = model::loadModel("models/warehouse.gltf");
+			vertices = model::loadModel("models/monkey.glb");
 
 			app.initialize(vertices);
 		},

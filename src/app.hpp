@@ -1139,7 +1139,7 @@ namespace dyadikos {
 				VkDebugUtilsMessageTypeFlagsEXT messageType,
 				const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
 				void *pUserData) -> VkBool32 {
-				spdlog::error("validation layer: {}", pCallbackData->pMessage);
+				spdlog::debug("validation layer: {}", pCallbackData->pMessage);
 
 				return VK_FALSE;
 			}

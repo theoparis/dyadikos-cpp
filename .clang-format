@@ -1,8 +1,9 @@
 ---
 Language: Cpp
 IndentWidth: 4
+TabWidth: 4
 AccessModifierOffset: -2
-UseTab: Never
+UseTab: Always
 AlignAfterOpenBracket: Align
 BreakBeforeBraces: Attach
 AllowShortIfStatementsOnASingleLine: true

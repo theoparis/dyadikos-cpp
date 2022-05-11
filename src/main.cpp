@@ -1,9 +1,7 @@
-#include "app.hpp"
-#include "mesh.hpp"
-#include "shader.hpp"
 #include "transform.hpp"
-#include "primitive.hpp"
-#include "camera.hpp"
+#include "app.hpp"
+#include "model.hpp"
+#include <GLFW/glfw3.h>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -13,39 +11,62 @@
 using namespace dyadikos;
 
 auto get_file_contents(const char *filename) -> std::string {
-    std::ifstream in(filename, std::ios::in | std::ios::binary);
-    if (in) {
-        std::ostringstream contents;
-        contents << in.rdbuf();
-        in.close();
-        return (contents.str());
-    }
+	std::ifstream in = std::ifstream(filename, std::ios::in | std::ios::binary);
+	if (in) {
+		std::ostringstream contents;
+		contents << in.rdbuf();
+		in.close();
+		return (contents.str());
+	}
 
-    throw(errno);
+	throw(errno);
 }
 
 auto main() -> int {
-    auto app = std::make_shared<Application>();
-    std::shared_ptr<ShaderProgram> shader = nullptr;
+	auto app = Application{};
+	auto camera_transform = Transform();
+	camera_transform.position.z = -2.0f;
 
-    auto camera = std::make_shared<PerspectiveCamera>();
-    camera->transform.position.z = -5.0;
+	std::vector<Vertex> vertices = {{{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+									{{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+									{{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
 
-    auto mesh = primitive::cube();
-    std::shared_ptr<MeshRenderer> meshRenderer = nullptr;
+	return app.run(
+		[&app, &vertices, &camera_transform] {
+			glfwSetWindowUserPointer(app.get_window(), &camera_transform);
 
-    return app->run(
-        [&shader, &mesh, &meshRenderer] {
-            shader = std::make_shared<ShaderProgram>(
-                get_file_contents("examples/shader/default.vert"),
-                get_file_contents("examples/shader/default.frag"));
+			vertices = model::loadModel("models/monkey.glb");
 
-            meshRenderer = std::make_shared<MeshRenderer>(mesh);
-        },
-        [&shader, &camera, &app, &meshRenderer] {
-            glClearColor(0.2, 0.2, 0.2, 1.0);
-            shader->activate();
-            shader->set_uniform("transform", camera->get_matrix(app));
-            meshRenderer->draw();
-        });
+			app.initialize(vertices);
+		},
+		[&app, &vertices, &camera_transform] {
+			// Handle updates
+			if (glfwGetKey(app.get_window(), GLFW_KEY_W) == GLFW_PRESS) {
+				camera_transform.position.z += 0.01;
+			}
+
+			if (glfwGetKey(app.get_window(), GLFW_KEY_S) == GLFW_PRESS) {
+				camera_transform.position.z -= 0.01;
+			}
+
+			if (glfwGetKey(app.get_window(), GLFW_KEY_A) == GLFW_PRESS) {
+				camera_transform.position.x += 0.01;
+			}
+
+			if (glfwGetKey(app.get_window(), GLFW_KEY_D) == GLFW_PRESS) {
+				camera_transform.position.x -= 0.01;
+			}
+
+			// Handle rendering
+			auto window_size = app.get_window_size();
+			const glm::mat4 projection = glm::perspective(
+				45.0f, window_size.x / window_size.y, 0.1f, 200.0f);
+			const glm::mat4 view = camera_transform.get_matrix();
+			const glm::mat4 model =
+				glm::mat4(1.0f) * glm::scale(glm::vec3(10.0, 10.0, 10.0));
+
+			app.set_transform(projection * view * model);
+
+			app.draw_frame(vertices);
+		});
 }
